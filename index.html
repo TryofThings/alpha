@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shady Photo Gallery</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    /* --------------- THEME VARIABLES --------------- */
+    :root {
+      --bg: #f4f4f4;
+      --fg: #333;
+      --accent: #333;
+      --skeleton-bg: #ccc;
+    }
+    [data-theme="dark"] {
+      --bg: #121212;
+      --fg: #f4f4f4;
+      --accent: #ffffff;
+    }
+    [data-theme="sepia"] {
+      --bg: #f4ecd8;
+      --fg: #5b4636;
+      --accent: #5b4636;
+    }
+    [data-theme="neon"] {
+      --bg: #000000;
+      --fg: #00ff00;
+      --accent: #00ff00;
+    }
+
+    /* --------------- GLOBAL RESETS --------------- */
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      transition: background 0.3s, color 0.3s;
+    }
+    header,
+    .controls,
+    .tags,
+    .settings {
+      padding: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    header {
+      justify-content: space-between;
+      background: var(--accent);
+      color: var(--bg);
+    }
+    nav a,
+    nav button,
+    .tags button,
+    .settings button {
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      padding: 0.35rem 0.75rem;
+      border-radius: 4px;
+    }
+    button:hover {
+      opacity: 0.85;
+    }
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* --------------- SEARCH / FILTERS --------------- */
+    .controls input,
+    .controls select,
+    .settings input,
+    .settings button {
+      padding: 0.5rem;
+    }
+    .tags {
+      justify-content: center;
+    }
+
+    /* --------------- GALLERY --------------- */
+    .gallery {
+      column-count: 1;
+      column-gap: 1rem;
+      padding: 1rem;
+    }
+    /* Responsive column counts */
+    @media (min-width: 600px) {
+      .gallery {
+        column-count: 2;
+      }
+    }
+    @media (min-width: 900px) {
+      .gallery {
+        column-count: 3;
+      }
+    }
+    @media (min-width: 1200px) {
+      .gallery {
+        column-count: 4;
+      }
+    }
+    .gallery.compact {
+      column-count: 1;
+    }
+    @media (min-width: 600px) {
+      .gallery.compact {
+        column-count: 2;
+      }
+    }
+
+    .item {
+      break-inside: avoid;
+      margin-bottom: 1rem;
+      position: relative;
+    }
+    .item img,
+    .item video {
+      width: 100%;
+      display: block;
+      border-radius: 8px;
+    }
+
+    /* Skeleton Loader */
+    .skeleton {
+      background: var(--skeleton-bg);
+      height: 200px;
+      animation: pulse 1.5s infinite;
+      border-radius: 8px;
+    }
+    @keyframes pulse {
+      0%,
+      100% {
+        opacity: 0.6;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
+
+    .item-info {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      color: #ffffff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem;
+      font-size: 0.9rem;
+      border-bottom-left-radius: 8px;
+      border-bottom-right-radius: 8px;
+    }
+
+    .badge-new {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: red;
+      color: #ffffff;
+      padding: 2px 6px;
+      font-size: 0.75rem;
+      border-radius: 4px;
+    }
+
+    /* --------------- LIGHTBOX --------------- */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .lightbox-content {
+      max-width: 90%;
+      max-height: 90%;
+    }
+
+    /* --------------- TABS --------------- */
+    .tab-buttons {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* --------------- MISC --------------- */
+    .back-to-top {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: none;
+      padding: 10px;
+      background: var(--accent);
+      color: var(--bg);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    /* Responsive: Controls stack vertically on narrow screens */
+    @media (max-width: 600px) {
+      .controls {
+        flex-direction: column;
+      }
+      .settings {
+        flex-direction: column;
+      }
+      nav {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- HEADER + NAV -->
+  <header>
+    <h1>Shady Photo</h1>
+    <nav>
+      <button onclick="switchTab('home')">Home</button>
+      <button onclick="switchTab('favorites')">Favorites</button>
+      <button onclick="switchTab('history')">History</button>
+      <button id="themeBtn" aria-label="Toggle theme" onclick="cycleTheme()"></button>
+      <button aria-label="Toggle sounds" onclick="toggleSounds()">🔊</button>
+      <button aria-label="Install app" id="installBtn" style="display:none">💾 Install</button>
+    </nav>
+  </header>
+
+  <!-- SEARCH & FILTER CONTROLS -->
+  <section class="controls">
+    <input
+      type="text"
+      id="searchInput"
+      placeholder="Search…"
+      aria-label="Search photos/videos"
+      autocomplete="off"
+      oninput="onSearchInputDebounced()"
+    />
+    <div id="autocomplete" role="listbox"></div>
+    <select id="typeSelect" aria-label="Media type" onchange="searchMedia(true)">
+      <option value="photo">Photos</option>
+      <option value="video">Videos</option>
+    </select>
+    <button onclick="searchMedia(true)">Search</button>
+    <button onclick="shuffleGallery()">🔀 Shuffle</button>
+    <select id="sortSelect" onchange="applySort()" aria-label="Sort by">
+      <option value="none">Sort</option>
+      <option value="views">Most Viewed</option>
+      <option value="newest">Newest</option>
+    </select>
+    <input type="date" id="fromDate" onchange="searchMedia(true)" aria-label="From date" />
+    <input type="date" id="toDate" onchange="searchMedia(true)" aria-label="To date" />
+  </section>
+
+  <!-- TAG FILTERS -->
+  <section class="tags" id="dynamicTags"></section>
+
+  <!-- SETTINGS -->
+  <section class="settings">
+    <label><input type="checkbox" id="autoplayToggle" checked /> Autoplay</label>
+    <label><input type="checkbox" id="compactView" onchange="toggleCompact()" /> Compact</label>
+    <label><input type="checkbox" id="blurToggle" /> Blur NSFW</label>
+    <button onclick="resetFavorites()">➕ Reset Favorites</button>
+    <button onclick="bulkDownload()">⬇️ Download All</button>
+    <button onclick="undoLastAction()">↩️ Undo</button>
+  </section>
+
+  <!-- TABS -->
+  <div id="home" class="tab-content active">
+    <div id="gallery" class="gallery"></div>
+    <p id="noResults" style="text-align:center; display:none;">No results found.</p>
+  </div>
+  <div id="favorites" class="tab-content">
+    <h2>Your Favorites</h2>
+    <div id="favGallery" class="gallery"></div>
+  </div>
+  <div id="history" class="tab-content">
+    <h2>Viewed History</h2>
+    <ul id="historyList"></ul>
+  </div>
+
+  <!-- LIGHTBOX -->
+  <div
+    id="lightbox"
+    class="lightbox"
+    tabindex="-1"
+    role="dialog"
+    aria-modal="true"
+    onkeydown="lightboxKeyNav(event)"
+    onclick="closeLightbox()"
+  >
+    <div id="lightboxContent" class="lightbox-content"></div>
+  </div>
+
+  <!-- BACK TO TOP -->
+  <button class="back-to-top" onclick="scrollToTop()">⬆️</button>
+
+  <!-- Toastify -->
+  <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+
+  <script>
+    /* ---------------------- CONFIG & STATE ---------------------- */
+    const apiKey = ""; // <-- INSERT PEXELS KEY
+    let page = 1,
+      query = "trending",
+      type = "photo";
+    let isFetching = false,
+      lastFetchLen = 0,
+      debounceTimer;
+    let favorites = [],
+      historyLog = [],
+      lastAction = null;
+
+    const themes = ["light", "dark", "sepia", "neon"];
+    let themeIdx = 0;
+
+    let soundsEnabled = true,
+      trendingKeywords = ["Nature", "Tech", "People", "Animals"];
+
+    // cache of last fetched items for arrow key navigation
+    let currentItems = [];
+    let currentIndex = -1;
+
+    /* ---------------------- UTILITIES ---------------------- */
+    function showToast(msg) {
+      Toastify({ text: msg, duration: 2000, gravity: "bottom", backgroundColor: "#333" }).showToast();
+    }
+    function debounce(fn, delay) {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(fn, delay);
+    }
+
+    function saveState() {
+      localStorage.setItem("sp_favs", JSON.stringify(favorites));
+      localStorage.setItem("sp_history", JSON.stringify(historyLog));
+      localStorage.setItem("sp_lastId", JSON.stringify(Date.now()));
+    }
+
+    /* ---------------------- INITIAL LOAD ---------------------- */
+    document.addEventListener("DOMContentLoaded", () => {
+      loadState();
+      applySavedTheme();
+      registerPWA();
+      searchMedia();
+      window.addEventListener("scroll", onScroll);
+      setInterval(checkNewContent, 60000); // every minute
+    });
+
+    function loadState() {
+      favorites = JSON.parse(localStorage.getItem("sp_favs")) || [];
+      historyLog = JSON.parse(localStorage.getItem("sp_history")) || [];
+    }
+
+    /* ---------------------- SEARCH / FETCH ---------------------- */
+    function searchMedia(reset = true) {
+      if (isFetching) return;
+      if (reset) {
+        page = 1;
+        document.getElementById("gallery").innerHTML = "";
+      }
+      query = document.getElementById("searchInput").value || query;
+      type = document.getElementById("typeSelect").value;
+      const from = document.getElementById("fromDate").value;
+      const to = document.getElementById("toDate").value;
+      const endpoint =
+        type === "photo" ? "https://api.pexels.com/v1/search" : "https://api.pexels.com/videos/search";
+
+      isFetching = true;
+      lastFetchLen = 0;
+      showSkeleton();
+
+      fetch(`${endpoint}?query=${encodeURIComponent(query)}&per_page=20&page=${page}` + `${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`, {
+        headers: { Authorization: apiKey },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          const items = type === "photo" ? data.photos : data.videos;
+          currentItems = items; // store for lightbox navigation
+
+          if (page === 1 && items.length === 0) {
+            document.getElementById("noResults").style.display = "block";
+          } else {
+            document.getElementById("noResults").style.display = "none";
+          }
+          renderItems(items);
+          dynamicTags(items);
+          lastFetchLen = items.length;
+          page++;
+          isFetching = false;
+          hideSkeleton();
+        })
+        .catch((err) => {
+          console.error(err);
+          isFetching = false;
+          hideSkeleton();
+        });
+    }
+
+    /* ---------------------- SKELETON LOADER ---------------------- */
+    function showSkeleton() {
+      const g = document.getElementById("gallery");
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < 6; i++) {
+        const s = document.createElement("div");
+        s.className = "skeleton";
+        frag.appendChild(s);
+      }
+      g.appendChild(frag);
+    }
+    function hideSkeleton() {
+      document.querySelectorAll(".skeleton").forEach((s) => s.remove());
+    }
+
+    /* ---------------------- RENDER ITEMS ---------------------- */
+    function renderItems(items) {
+      const g = document.getElementById("gallery");
+      const frag = document.createDocumentFragment();
+      items.forEach((item, idx) => {
+        const src = type === "photo" ? item.src.large : item.video_files[0].link;
+        const div = document.createElement("div");
+        div.className = "item";
+
+        // NEW badge logic
+        const lastCheck = JSON.parse(localStorage.getItem("sp_lastId")) || 0;
+        if (item.id * 1000 > lastCheck) {
+          const b = document.createElement("div");
+          b.className = "badge-new";
+          b.textContent = "NEW";
+          div.appendChild(b);
+        }
+
+        // Media element
+        if (type === "photo") {
+          div.innerHTML += `<img src="${src}" alt="${item.alt || query}" loading="lazy" tabindex="0" onclick="openLightbox('${src}','img',${idx})" />`;
+        } else {
+          div.innerHTML += `<video src="${src}" alt="Video by ${item.user.name}" ${document.getElementById("autoplayToggle").checked ? "autoplay loop" : ""} loading="lazy" controls tabindex="0" onclick="openLightbox('${src}','video',${idx})"></video>`;
+        }
+
+        // Views tracking
+        const views = localStorage.getItem(src) ? JSON.parse(localStorage.getItem(src)) + 1 : 1;
+        localStorage.setItem(src, views);
+
+        // Info bar
+        const info = document.createElement("div");
+        info.className = "item-info";
+        info.innerHTML = `<span>${type === "photo" ? item.photographer : item.user.name} | 👁️ ${views}</span>
+                          <div>
+                            <button onclick="toggleFavorite('${src}')">❤️</button>
+                            <button onclick="downloadMedia('${src}')">⬇️</button>
+                          </div>`;
+        div.appendChild(info);
+        frag.appendChild(div);
+      });
+      g.appendChild(frag);
+    }
+
+    /* ---------------------- DYNAMIC TAGS ---------------------- */
+    function dynamicTags(items) {
+      const tagSet = new Set(trendingKeywords);
+      items.forEach((item) => {
+        const t = item.photographer || item.user.name;
+        tagSet.add(t);
+      });
+      const container = document.getElementById("dynamicTags");
+      container.innerHTML = "";
+      tagSet.forEach((tag) => {
+        const btn = document.createElement("button");
+        btn.textContent = tag;
+        btn.onclick = () => {
+          document.getElementById("searchInput").value = tag;
+          searchMedia(true);
+        };
+        container.appendChild(btn);
+      });
+      // cache tags
+      localStorage.setItem("sp_tags", JSON.stringify([...tagSet]));
+    }
+
+    /* ---------------------- SCROLL / INFINITE ---------------------- */
+    function onScroll() {
+      document.querySelector(".back-to-top").style.display = window.scrollY > 300 ? "block" : "none";
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 500 && !isFetching) {
+        debounce(() => searchMedia(false), 300);
+      }
+    }
+
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    /* ---------------------- LIGHTBOX & NAV ---------------------- */
+    function openLightbox(src, kind, idx) {
+      currentIndex = idx;
+      const content =
+        kind === "img"
+          ? `<img src="${src}" alt="" />`
+          : `<video src="${src}" controls autoplay loop></video>`;
+      document.getElementById("lightboxContent").innerHTML = content;
+      const lb = document.getElementById("lightbox");
+      lb.style.display = "flex";
+      lb.focus();
+      trapFocus(lb);
+    }
+    function closeLightbox() {
+      document.getElementById("lightbox").style.display = "none";
+    }
+    function lightboxKeyNav(e) {
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowRight") navigateLightbox(1);
+      if (e.key === "ArrowLeft") navigateLightbox(-1);
+    }
+    function navigateLightbox(dir) {
+      if (currentIndex === -1) return;
+      currentIndex += dir;
+      if (currentIndex < 0 || currentIndex >= currentItems.length) return;
+      const item = currentItems[currentIndex];
+      const src = type === "photo" ? item.src.large : item.video_files[0].link;
+      openLightbox(src, type === "photo" ? "img" : "video", currentIndex);
+    }
+    // focus trap implementation
+    function trapFocus(el) {
+      const focusableSelectors = "a[href], button, textarea, input, select, video, img";
+      const focusable = el.querySelectorAll(focusableSelectors);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") {
+          if (e.shiftKey) {
+            if (document.activeElement === first) {
+              e.preventDefault();
+              last.focus();
+            }
+          } else {
+            if (document.activeElement === last) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
+      });
+      first.focus();
+    }
+
+    /* ---------------------- FAVORITES & HISTORY ---------------------- */
+    function toggleFavorite(src) {
+      const idx = favorites.indexOf(src);
+      if (idx > -1) {
+        favorites.splice(idx, 1);
+        lastAction = { type: "del", item: src };
+        showToast("Removed");
+      } else {
+        favorites.push(src);
+        lastAction = { type: "add", item: src };
+        showToast("Added");
+      }
+      saveState();
+      renderFavorites();
+    }
+    function renderFavorites() {
+      const fg = document.getElementById("favGallery");
+      fg.innerHTML = "";
+      favorites.forEach((src) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `<img src="${src}" alt="" loading="lazy" onclick="openLightbox('${src}','img',0)" />
+          <div class="item-info">
+            <button onclick="toggleFavorite('${src}')">🗑️</button>
+            <button onclick="downloadMedia('${src}')">⬇️</button>
+          </div>`;
+        fg.appendChild(div);
+      });
+    }
+    function resetFavorites() {
+      favorites = [];
+      saveState();
+      renderFavorites();
+      showToast("Favorites reset");
+    }
+    function bulkDownload() {
+      favorites.forEach((src) => downloadMedia(src));
+    }
+    function undoLastAction() {
+      if (!lastAction) return;
+      if (lastAction.type === "add") favorites = favorites.filter((s) => s !== lastAction.item);
+      else if (lastAction.type === "del") favorites.push(lastAction.item);
+      saveState();
+      renderFavorites();
+      showToast("Undo successful");
+    }
+    function downloadMedia(src) {
+      const a = document.createElement("a");
+      a.href = src;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    function renderHistory() {
+      const hl = document.getElementById("historyList");
+      hl.innerHTML = "";
+      historyLog.forEach((url) => {
+        const li = document.createElement("li");
+        li.textContent = url;
+        li.onclick = () => openLightbox(url, "img", 0);
+        hl.appendChild(li);
+      });
+    }
+    document.getElementById("lightbox").addEventListener("click", () => {
+      const media = document.querySelector("#lightboxContent img, #lightboxContent video");
+      if (media) {
+        historyLog.push(media.src);
+        saveState();
+        renderHistory();
+      }
+    });
+
+    /* ---------------------- SORT & SHUFFLE ---------------------- */
+    function applySort() {
+      const sel = document.getElementById("sortSelect").value;
+      const items = Array.from(document.querySelectorAll("#gallery .item"));
+      if (sel === "views") {
+        items.sort((a, b) => {
+          const vA = +localStorage.getItem(a.querySelector("img,video").src);
+          const vB = +localStorage.getItem(b.querySelector("img,video").src);
+          return vB - vA;
+        });
+      } else if (sel === "newest") {
+        // Pexels API returns newest first by default when page=1
+        // No client-side action needed (could re-fetch if desired)
+      }
+      const g = document.getElementById("gallery");
+      g.innerHTML = "";
+      items.forEach((i) => g.appendChild(i));
+    }
+    function shuffleGallery() {
+      const g = document.getElementById("gallery"),
+        items = Array.from(g.children);
+      for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+      }
+      g.innerHTML = "";
+      items.forEach((i) => g.appendChild(i));
+    }
+
+    /* ---------------------- AUTOCOMPLETE ---------------------- */
+    function onSearchInputDebounced() {
+      debounce(() => {
+        const val = document.getElementById("searchInput").value.toLowerCase();
+        const ac = document.getElementById("autocomplete");
+        ac.innerHTML = "";
+        trendingKeywords
+          .filter((k) => k.toLowerCase().startsWith(val))
+          .slice(0, 5)
+          .forEach((k) => {
+            const div = document.createElement("div");
+            div.textContent = k;
+            div.role = "option";
+            div.onclick = () => {
+              document.getElementById("searchInput").value = k;
+              ac.innerHTML = "";
+              searchMedia(true);
+            };
+            ac.appendChild(div);
+          });
+      }, 200);
+    }
+
+    /* ---------------------- THEME & SOUND ---------------------- */
+    function cycleTheme() {
+      themeIdx = (themeIdx + 1) % themes.length;
+      document.documentElement.setAttribute("data-theme", themes[themeIdx]);
+      localStorage.setItem("sp_theme", themes[themeIdx]);
+      document.getElementById("themeBtn").textContent = themes[themeIdx].toUpperCase();
+    }
+    function applySavedTheme() {
+      const t = localStorage.getItem("sp_theme") || "light";
+      themeIdx = themes.indexOf(t);
+      if (themeIdx < 0) themeIdx = 0;
+      document.documentElement.setAttribute("data-theme", themes[themeIdx]);
+      document.getElementById("themeBtn").textContent = themes[themeIdx].toUpperCase();
+    }
+    function toggleSounds() {
+      soundsEnabled = !soundsEnabled;
+      showToast("Sounds " + (soundsEnabled ? "On" : "Off"));
+    }
+
+    /* ---------------------- PWA & NOTIFICATIONS ---------------------- */
+    function registerPWA() {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("sw.js");
+      }
+      window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("installBtn");
+        btn.style.display = "inline";
+        btn.onclick = () => {
+          e.prompt();
+          e.userChoice.then(() => (btn.style.display = "none"));
+        };
+      });
+    }
+    function checkNewContent() {
+      if (Notification.permission === "default") Notification.requestPermission();
+      if (Notification.permission === "granted") {
+        new Notification("Shady Photo", { body: "Check out new trending media!" });
+      }
+    }
+
+    /* ---------------------- TAB NAV ---------------------- */
+    function switchTab(id) {
+      document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+    }
+
+    /* ---------------------- COMPACT VIEW ---------------------- */
+    function toggleCompact() {
+      document.getElementById("gallery").classList.toggle("compact", document.getElementById("compactView").checked);
+    }
+  </script>
+</body>
+</html>
